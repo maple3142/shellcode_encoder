@@ -14,7 +14,7 @@ def check_o16(o16):
 
 def load_rdx_r64(r64):
     check_r64(r64)
-    shellcode = ''
+    shellcode = b''
     if r64 != 'rdx':
         shellcode += asm('push %s; pop rdx' % (r64,))
     return shellcode
@@ -40,7 +40,7 @@ def load_rdx_indirect_r64_r64(r64, or64):
     check_r64(or64)
     if r64 == 'rsp':
         raise ValueError('register offset indirect to rsp not supported')
-    shellcode = ''
+    shellcode = b''
     shellcode += asm('push %s; push rax' % (r64,)) # save value and allocate space
     shellcode += encoder.zero_rax() # zero rsi
     shellcode += asm('pop rax; pop rax') # deallocate space and restore value
@@ -56,7 +56,7 @@ def load_rdx_indirect_r64_i64(r64, o64):
     check_r64(r64)
     if r64 == 'rsp':
         return load_rdx_indirect_rsp(o64)
-    shellcode = ''
+    shellcode = b''
     shellcode += asm('push %s; push rax' % (r64,)) # save value and allocate space
     shellcode += encoder.zero_rax() # save zero into rbx for next step. also zeroes rsi
     if o64 != 0:
@@ -77,7 +77,7 @@ def load_rdx_indirect_rsp(o8): # mov rdx, [rsp+o8] without clobbering
     if o8 % 8 != 0:
         raise ValueError('rsp offset %d is not supported' % (o8,))
 
-    shellcode = ''
+    shellcode = b''
     o8 += 16 # we need to make sure that before starting rsp = rsp+o8+16.
     o8 /= 8
     if o8 > 0:
@@ -129,26 +129,26 @@ def load_rdx(expr):
         offset = 0
         if '+' in indirect:
             base,offset = parse_indirect(indirect)
-            if isinstance(offset, (int,long)):
+            if isinstance(offset, int):
                 return load_rdx_indirect_r64_i64(base, offset)
             else:
                 return load_rdx_indirect_r64_r64(base, offset)
         else:
             indirect = parse_operand(indirect)
-            if isinstance(indirect, (int,long)):
+            if isinstance(indirect, int):
                 return load_rdx_indirect_i64(indirect)
             else:
                 return load_rdx_indirect_r64_i64(indirect, 0)
     else:
         if '+' in expr:
             base, offset = parse_indirect(expr)
-            if isinstance(offset, (int,long)):
+            if isinstance(offset, int):
                 return load_rdx_offset(base, offset)
             else:
                 raise ValueError('sorry, loading shellcode pointer as reg+reg is not supported')
         else:
             operand = parse_operand(expr)
-            if isinstance(operand, (int,long)):
+            if isinstance(operand, int):
                 return load_rdx_i64(operand)
             else:
                 return load_rdx_r64(operand)

